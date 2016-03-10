@@ -12,7 +12,7 @@
 #define CMDNM  0
 #define SIGNAL 1
 #define SYSTAT 2
-#define EXIT   3 
+#define EXIT   3
 #define CD     4
 #define PWD    5
 
@@ -22,7 +22,7 @@
 //
 // DESCRIPTION:
 //
-// This function gets the command the started a process by accessing 
+// This function gets the command the started a process by accessing
 // /proc/<pid>/comm.
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,17 +34,17 @@ int cmdnm( char* pid )
   char path[256] = "/proc/";
   strncat( path , pid , 10 );
   strncat( path , "/comm" , 5 );
-  
+
   fin = fopen( path , "r" );
   if( fin == NULL )
   {
     printf( "Error: Didn't find process %s\n" , pid );
     return -1;
   }
-  
+
   fgets( name , 1024 , fin );
   printf( "Process stated by: \'%s\'" , name);
-  
+
   fclose(fin);
   return 0;
 }
@@ -55,7 +55,7 @@ int cmdnm( char* pid )
 //
 // DESCRIPTION:
 //
-// This function sends a signal to a process using the kill command. It checks 
+// This function sends a signal to a process using the kill command. It checks
 // if the arguments are in the proper ranges, switching them if not.
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +108,7 @@ int systat()
     fclose( fin );
     clearerr( fin );
   }
-  
+
   fin = fopen( "/proc/uptime" , "r" );
   if( fin == NULL )
   {
@@ -118,12 +118,12 @@ int systat()
   else
   {
     fscanf( fin , "%lg%lg" , &running , &idle );
-    printf( "\nSystem has been up for %f seconds, and idle for %f seconds.\n" 
+    printf( "\nSystem has been up for %f seconds, and idle for %f seconds.\n"
             , running , idle );
     fclose( fin );
     clearerr( fin );
   }
-  
+
   fin = fopen( "/proc/meminfo" , "r" );
   if( fin == NULL )
   {
@@ -140,7 +140,7 @@ int systat()
     fclose( fin );
     clearerr( fin );
   }
-  
+
   fin = fopen( "/proc/cpuinfo" , "r" );
   if( fin == NULL )
   {
@@ -151,7 +151,8 @@ int systat()
   {
     printf("\nCPU Information:\n");
     fgets( line , 1024 , fin );
-    for( int i = 0 ; i < 8 ; i++ )
+    int i;
+    for( i = 0 ; i < 8 ; i++ )
     {
       fgets( line , 1024 , fin );
       printf( "%s" , line );
@@ -159,7 +160,7 @@ int systat()
     fclose( fin );
     clearerr( fin );
   }
-  
+
   return fails;
 }
 
@@ -210,7 +211,7 @@ int pwd()
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-// FUNCTION: Run 
+// FUNCTION: Run
 //
 // DESCRIPTION:
 //
@@ -224,15 +225,15 @@ int Run( int cmd_num , int args, char** arg_list )
   {
     case CMDNM:
       if( args != 2 )
-      {  
+      {
         fprintf(stderr, "cmdnm requires 1 argument: <process_id>\n" );
         return -1;
-      } 
+      }
       return cmdnm( arg_list[1] );
     case SIGNAL:
       if( args != 3 )
       {
-        fprintf( stderr, 
+        fprintf( stderr,
                 "signal requires 2 arguments: <signal_num> <process_id>\n" );
         return -1;
       }
@@ -243,23 +244,23 @@ int Run( int cmd_num , int args, char** arg_list )
       return 2;
     case CD:
       if( args != 2 )
-      {  
-        fprintf(stderr, 
+      {
+        fprintf(stderr,
                "cd requires 1 argument: <relative path> or <absolute_path>\n" );
         return -1;
-      } 
+      }
       return cd( arg_list[1] );
-    case PWD: 
+    case PWD:
       return pwd();
-  }     
-  return 0; 
+  }
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 //
 // FUNCTION: New_Process
 //
-// DESCRIPTION: 
+// DESCRIPTION:
 //
 // Creates a new process to run command given on the command line in the
 // diagnostic shell.
@@ -270,7 +271,7 @@ int New_Process( char** arg_list )
 {
   pid_t child_pid;
   int status;
-  
+
   //Duplicate current process to make child process
   child_pid = fork();
   if( child_pid == 0 )
@@ -287,16 +288,16 @@ int New_Process( char** arg_list )
 
     //Wait for child process to terminate and get usage information
     wait3( &status , 0 , &runtime_data );
-    
-    //If 
+
+    //If
     if( status == 65280 )
     {
       fprintf(stderr, "dsh: %s: command not found\n" , arg_list[0] );
       return -1;
     }
-    
+
     printf( "Child_Pid: %d.\n" , (int)child_pid );
-    printf( "User time: %d seconds, %d microseconds.\n" , 
+    printf( "User time: %d seconds, %d microseconds.\n" ,
       (int) runtime_data.ru_utime.tv_sec , (int) runtime_data.ru_utime.tv_usec);
     printf( "System time: %d second, %d microseconds.\n" ,
       (int) runtime_data.ru_stime.tv_sec , (int) runtime_data.ru_stime.tv_usec);
@@ -306,11 +307,3 @@ int New_Process( char** arg_list )
   }
   return 0;
 }
-
-
-
-
-
-
-
-
