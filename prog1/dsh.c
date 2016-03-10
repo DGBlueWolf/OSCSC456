@@ -7,7 +7,6 @@
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "run.c"
 
 //Make some twidly fucntions more clear/ readable
 #define dref(x)    (*(x))
