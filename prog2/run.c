@@ -1,3 +1,5 @@
+#include <pthread.h>
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -44,7 +46,7 @@ int cmdnm( char* pid )
   }
 
   fgets( name , 1024 , fin );
-  printf( "Process stated by: \'%s\'" , name);
+  printf( "Process started by: \'%s\'" , name);
 
   fclose(fin);
   return 0;
@@ -91,78 +93,130 @@ int send_signal( char* arg1 , char* arg2 )
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+//this function will get version info
+void * systat_getVersion( void * input )
+{
+  char * buffer = (char * ) input;
+  char line[1024];
+  
+  FILE * fin = fopen( "/proc/version" , "r" );
+  
+  if( fin == NULL )
+    pthread_exit( (void*) &fin );
+  
+  fgets( line , 1024 , fin );
+  strncpy( buffer , "\n" , 1 );
+  strncat( buffer , line , 1024 );
+  fclose(fin);
+  clearerr(fin);
+  pthread_exit( NULL );
+}
+
+//this function will get system uptime and idle time
+void * systat_getUptime( void * input )
+{
+  char * buffer = (char * ) input;
+  double running,idle;
+  FILE * fin = fopen( "/proc/uptime" , "r" );
+  
+  if( fin == NULL )
+    pthread_exit( (void*) &fin );
+    
+  fscanf( fin , "%lg%lg" , &running , &idle );
+  sprintf( buffer , "\nSystem uptime: %f seconds; idle time: %f seconds.\n"
+            , running , idle );
+            
+  fclose( fin );
+  clearerr( fin );
+  pthread_exit( NULL );
+}
+
+//this function will get memfo
+void * systat_getMemfo( void * input )
+{
+  char * buffer = (char *) input;
+  FILE * fin = fopen( "/proc/meminfo" , "r" );
+  char line[1024];
+  
+  strncpy( buffer , "\nMemory Usage:\n" , 16);
+  
+  if( fin == NULL )
+    pthread_exit( (void*) &fin );
+    
+  fgets( line , 1024 , fin );
+  strncat( buffer , line , 1024 );
+  fgets( line , 1024 , fin );
+  strncat( buffer , line , 1024 );
+  fclose( fin );
+  clearerr( fin );
+  pthread_exit( NULL );
+}
+
+//this funciton will get cpuinfo
+void * systat_getCpuinfo( void * input )
+{
+  //covert void input into string buffer
+  char * buffer = (char *)input;
+  char line[1024] = "";
+  FILE * fin = fopen( "/proc/cpuinfo" , "r" );
+  
+  if( fin == NULL )
+    pthread_exit( (void*) &fin );
+  
+  strncpy( buffer , "\nCPU Information:\n" , 26 );
+  fgets( line , 1024 , fin );
+  strncat( buffer , line , 1024 );
+  
+  int i;
+  for( i = 0 ; i < 8 ; i++ )
+  {
+    fgets( line , 1024 , fin );
+    strncat( buffer , line , 1024 );
+  }
+  
+  fclose( fin );
+  clearerr( fin );
+    
+  pthread_exit( NULL ); 
+}
+
+//This function will create threads for each stage of the systat process and 
+//will return 0;
 int systat()
 {
   int  fails = 0;
-  char line[1024];
-  double running,idle;
-  FILE * fin = fopen( "/proc/version" , "r" );
-  if( fin == NULL )
+  int  result_code;
+  int  index;
+  char buffer_version[1024] = "";
+  char buffer_uptime[1024] = "";
+  char buffer_memfo[2048] = "";
+  char buffer_cpuinfo[10000] = "";
+  char *buffer[4] = { buffer_version , buffer_uptime , 
+                       buffer_memfo , buffer_cpuinfo };
+  pthread_t thread[4];
+  
+  void * (*func[4])(void *) = { systat_getVersion,
+                                systat_getUptime,
+                                systat_getMemfo,
+                                systat_getCpuinfo };
+                             
+  for( index = 0 ; index < 4 ; index++ )
   {
-    fails--;
-    fprintf( stderr , "Error: Couldn't open file /proc/version.\n" );
+    //printf( "In systat, creating thread %d." , index );
+    result_code = pthread_create( &thread[index] , NULL , func[index] , 
+                                  buffer[index]);
+    assert( 0 == result_code );
   }
-  else
+  
+  for( index = 0 ; index < 4 ; index++ )
   {
-    fgets( line , 1024 , fin );
-    printf( "\n%s" , line );
-    fclose( fin );
-    clearerr( fin );
+    result_code = pthread_join( thread[index] , NULL );
+    //printf( "In systat, thread %d has completed.\n" , index );
+    assert( 0 == result_code );
+    printf( "%s" , buffer[index] );
   }
-
-  fin = fopen( "/proc/uptime" , "r" );
-  if( fin == NULL )
-  {
-    fails--;
-    fprintf( stderr , "Error: Couldn't open file /proc/uptime.\n" );
-  }
-  else
-  {
-    fscanf( fin , "%lg%lg" , &running , &idle );
-    printf( "\nSystem has been up for %f seconds, and idle for %f seconds.\n"
-            , running , idle );
-    fclose( fin );
-    clearerr( fin );
-  }
-
-  fin = fopen( "/proc/meminfo" , "r" );
-  if( fin == NULL )
-  {
-    fails--;
-    fprintf( stderr , "Error: Couldn't open file /proc/meminfo.\n" );
-  }
-  else
-  {
-    printf("\nMemory Usage:\n");
-    fgets( line , 1024 , fin );
-    printf( "%s" , line );
-    fgets( line , 1024 , fin );
-    printf( "%s" , line );
-    fclose( fin );
-    clearerr( fin );
-  }
-
-  fin = fopen( "/proc/cpuinfo" , "r" );
-  if( fin == NULL )
-  {
-    fails--;
-    fprintf( stderr , "Error: Couldn't open file /proc/cpuinfo.\n" );
-  }
-  else
-  {
-    printf("\nCPU Information:\n");
-    fgets( line , 1024 , fin );
-    int i;
-    for( i = 0 ; i < 8 ; i++ )
-    {
-      fgets( line , 1024 , fin );
-      printf( "%s" , line );
-    }
-    fclose( fin );
-    clearerr( fin );
-  }
-
-  return fails;
+    
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,6 +283,7 @@ int pwd()
 
 int hb( int tinc , int tend , char * tval )
 {
+  //Verify input, and setup for running with units of s or ms.
   int ms = 0;
   if( !strncmp(tval,"s",2) )
   {
@@ -243,6 +298,7 @@ int hb( int tinc , int tend , char * tval )
     return -1;
   } 
   
+  //Define variables
   char buffer[26];
   char millis[5] = ".000";
   long nsec_init;
@@ -253,12 +309,17 @@ int hb( int tinc , int tend , char * tval )
   struct timespec Time;
   struct tm * time;
   time_t sec,sec_init;
+  
+  //Initial clock stuff
   clock_gettime( CLOCK_REALTIME , &Time );
   sec  = sec_init  = Time.tv_sec;
   nsec = nsec_init = Time.tv_nsec;
   msec = msec_init = nsec/1000000;
+  
+  //Heartbeat loop
   do
   {
+    //Build time of day string and print to stdout
     time = localtime( &sec );
     strftime( buffer , 26 , "%H:%M:%S" , time );
     if( ms )
@@ -273,6 +334,8 @@ int hb( int tinc , int tend , char * tval )
     }
     puts(buffer);
     
+    //Wait for elapsed time to equal target time next, break when we exceed 
+    //the end time
     if( elapsed < tend )
       while( elapsed < next )
       {

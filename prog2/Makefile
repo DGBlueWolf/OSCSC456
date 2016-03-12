@@ -6,17 +6,17 @@ CPP = g++
 
 # COMPILER OPTIONS:
 
-CFLAGS = -c
+CFLAGS = -lm -pthread
 
 #OBJECT FILES
 OBJS = run.o dsh.o
 
 dsh: ${OBJS}
-	${CC} -lm ${OBJS} -o dsh
+	${CC} ${CFLAGS} ${OBJS} -o dsh
 
 dsh.o: dsh.c
-	${CC} -c -lm dsh.c
+	${CC} -c ${CFLAGS} dsh.c
 
 run.o: run.c
-	${CC} -c -lm run.c
+	${CC} -c ${CFLAGS} run.c
 #-----------------------------------------------------------------------
