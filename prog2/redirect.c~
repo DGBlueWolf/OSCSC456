@@ -7,12 +7,14 @@ int main()
   fflush(stdout);
   freopen( "/dev/tty" , "a" , stdout );
   printf( "And we're back\n" ); 
-  
+  char stdinfile[1024];
   int n;
+  readlink( "/proc/self/fd/0" , stdinfile , 1024 );
   freopen( "redirect.in" , "r" , stdin );
   scanf( "%d" , &n );
-  printf("The file said: %d\n"  n );
-  freopen( "/dev/tty" , "r" , stdin );
+  printf("The file said: %d\n" , n );
+  printf("The original file for of stdin is: %s\n" , stdinfile );
+  freopen( stdinfile , "r" , stdin );
   scanf( "%d" , &n );
   printf("But I said: %d\n" , n );
   return 0;

@@ -30,25 +30,35 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+void * cmdnm_getCmdnm( void * input )
+{
+  char * buffer = (char *) input;
+  FILE * fin = fopen( buffer , "r" );
+  if( fin == NULL ) 
+    pthread_exit( (void*)&fin );
+  
+  fscanf( fin , "%1024[^\n]", buffer );
+  fclose( fin );
+  
+  pthread_exit( NULL );
+}
+   
 int cmdnm( char* pid )
 {
   FILE* fin = NULL;
-  char name[1024] = "";
-  char path[256] = "/proc/";
-  strncat( path , pid , 10 );
-  strncat( path , "/comm" , 5 );
+  char buffer[1024] = "/proc/";
+  int code;
+  pthread_t thread;
+  
+  strncat( buffer , pid , 10 );
+  strncat( buffer , "/comm" , 5 );
 
-  fin = fopen( path , "r" );
-  if( fin == NULL )
-  {
-    printf( "Error: Didn't find process %s\n" , pid );
-    return -1;
-  }
+  code = pthread_create( &thread , NULL , cmdnm_getCmdnm , buffer );
+  assert( code == 0 );
+  code = pthread_join( thread , NULL );
+  assert( code == 0 );
 
-  fgets( name , 1024 , fin );
-  printf( "Process started by: \'%s\'" , name);
-
-  fclose(fin);
+  printf( "Process %s started by: \'%s\'\n" , pid , buffer);
   return 0;
 }
 
