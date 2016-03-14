@@ -6,8 +6,10 @@
 #include <time.h>
 #include <sys/resource.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 
 //Make some twidly fucntions more clear/ readable
 #define dref(x)     (*(x))
@@ -15,7 +17,7 @@
 #define is_odd(x)   (x)&1
 #define is_set(x,i) ( (x) & (i) )
 #define setb(x,i)   (x) |= (i)
- 
+
 enum parse_modes
 {
   REDIR_STDIN = 1,
@@ -62,6 +64,16 @@ struct parse_set
   struct remote_host * rhost;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: parse_set_free
+//
+// DESCRIPTION:
+//
+// This function frees a struct parse_set pointer
+//
+////////////////////////////////////////////////////////////////////////////////
+
 void parse_set_free( struct parse_set * arg_set )
 {
   if( arg_set == NULL )
@@ -87,10 +99,22 @@ void parse_set_free( struct parse_set * arg_set )
     free( arg_set->rhost );
 }
     
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: pipeBuilder
+//
+// DESCRIPTION:
+//
+// This function parse further by "|" pipe characters. Generates a NULL
+// terminated set of arglists for each command piped together.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 struct pipe_builder * pipeBuilder( int command_count , char ** arg_list )
 {
   int i;
   char ** pos = arg_list;
+  //Allocate a pipe_builder
   struct pipe_builder * pip = (struct pipe_builder *) malloc( sizeof( struct pipe_builder ) );
   if( pip == NULL )
   {
@@ -98,6 +122,7 @@ struct pipe_builder * pipeBuilder( int command_count , char ** arg_list )
     return NULL;
   }
   
+  //Allocate n + 1 arg_lists
   pip->n = command_count;
   pip->arg_lists = (char *** ) malloc( (command_count+1) * sizeof( char ** ) );
   if( pip->arg_lists == NULL )
@@ -107,6 +132,7 @@ struct pipe_builder * pipeBuilder( int command_count , char ** arg_list )
     return NULL;
   }
   
+  //Populate arg_lists
   for( i = 0 ; i < command_count ; i++ ) 
   {
     pip->arg_lists[i] = pos;
@@ -118,13 +144,31 @@ struct pipe_builder * pipeBuilder( int command_count , char ** arg_list )
   (pip->arg_lists)[command_count] = NULL;
   return pip;
 }
-  
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: parse_special
+//
+// DESCRIPTION:
+//
+// Parses the initially parsed arglist, searching for reserved operators,
+// allocating memory as necessary. 
+//
+// OUTPUT:
+//    int mode;
+//    char ** reference to a converted pointer (char *) from (struct parse_set *)
+//
+////////////////////////////////////////////////////////////////////////////////
+
 int parse_special( char **arg_list , char **spec_res )
 {
-  *spec_res = NULL;
+  *spec_res = NULL; //Initialize spec_res
+  
   int command_count = 1;
   int mode = 0;
   char ** pos = arg_list;
+  
+  //Try to allocate arg_set
   struct parse_set * arg_set = (struct parse_set * ) malloc( sizeof( struct parse_set ) );
   if( arg_set == NULL )
   {
@@ -132,23 +176,17 @@ int parse_special( char **arg_list , char **spec_res )
     mode = -2;
   }
   
+  //Searched parsed arglist for reserved operators
   while( dref(pos) != NULL && mode >= 0 )
   {
-    //Look for the redirect stdin symbol and handle
-    if( !strncmp( dref(pos) , "<" , 1 ) )
+    //If '<' the redirect stdin symbol is found do this
+    if( strlen( dref(pos)) == 1 && !strncmp( dref(pos) , "<" , 1 ) )
     {
       dref(pos) = NULL;
       
-      if( is_set( mode , REDIR_STDIN ) )
+      if( is_set( mode , REDIR_STDIN | REMOTE_HOST) )
       {
         fprintf( stderr , "Cannot redirect stdin more than once.\n" );
-        mode = -1;
-        break;
-      }
-      
-      else if( is_set( mode , LOCAL_HOST | REMOTE_HOST ) )
-      {
-        fprintf( stderr , "Cannot redirect stdin when using host pipe.\n" );
         mode = -1;
         break;
       }
@@ -174,7 +212,7 @@ int parse_special( char **arg_list , char **spec_res )
     }
     
     //Look for the redirect stdout symbol and handle 
-    else if( !strncmp( dref(pos) , ">" , 1 ) )
+    else if( strlen( dref(pos)) == 1 && !strncmp( dref(pos) , ">" , 1 ) )
     {
       dref(pos) = NULL;
       
@@ -206,7 +244,7 @@ int parse_special( char **arg_list , char **spec_res )
     }
     
     //Look for the appending redirect symbol
-    else if( !strncmp( dref(pos) , ">>" , strlen(dref(pos)) ) )
+    else if( strlen( dref(pos)) == 2 && !strncmp( dref(pos) , ">>" , 2 ) )
     {
       dref(pos) = NULL;
       
@@ -238,7 +276,7 @@ int parse_special( char **arg_list , char **spec_res )
     }
     
     //Look for the pipe symbol
-    else if( !strncmp( dref(pos) , "|" , 1 ) )
+    else if( strlen( dref(pos)) == 1 && !strncmp( dref(pos) , "|" , 1 ) )
     {
       if( is_set( mode , REDIR_STDOUT_W | REDIR_STDOUT_A | REDIR_STDIN ) )
       {
@@ -259,28 +297,78 @@ int parse_special( char **arg_list , char **spec_res )
       setb( mode , PIPE_BUILDER );
     }
     
-    else if( !strncmp( dref(pos) , "((" , strlen(dref(pos)) ) )
+    //Handle local host pipe
+    else if( strlen( dref(pos)) == 2 &&  !strncmp( dref(pos) , "))" , 2 ) )
     {
-      if( is_set( mode , REDIR_STDOUT_W | REDIR_STDOUT_A | REDIR_STDIN | PIPE_BUILDER ) )
+      dref(pos) = NULL;
+      if( is_set( mode , REDIR_STDOUT_W | REDIR_STDOUT_A ) )
       {
-        fprintf( stderr , "Local host pipe must be first.\n" );
+        fprintf( stderr , "Can't bother redirect and write to socket.\n" );
         mode = -1;
         break;
       }
       
+      arg_set->lhost = (struct local_host *) malloc( sizeof( struct local_host ) );
+      if( arg_set->lhost == NULL )
+      {
+        fprintf( stderr , "Allocation Error.\n" );
+        mode = -2;
+        break;
+      }
+      
+      pos++;
+      if( dref(pos) == NULL )
+      {
+        fprintf( stderr , "Missing port for host pipe.\n" );
+        mode = -1;
+        break;
+      }
+      
+      arg_set->lhost->port_no = dref(pos);
       setb( mode , LOCAL_HOST );
     }
     
-    else if( !strncmp( dref(pos) , "))" , strlen(dref(pos)) ) )
+    //Handle remote host pipe
+    else if( strlen( dref(pos)) == 2 && !strncmp( dref(pos) , "((" , 2 ) )
     {
-      if( is_set( mode , REDIR_STDOUT_W | REDIR_STDOUT_A | REDIR_STDIN | PIPE_BUILDER ) ) 
+      dref(pos) = NULL;
+      if( is_set( mode , REDIR_STDIN | REMOTE_HOST) )
       {
-        fprintf( stderr , "Remote host pipe must be first.\n" );
+        fprintf( stderr , "Cannot redirect stdin more than once.\n" );
         mode = -1;
         break;
       }
       
       setb( mode , REMOTE_HOST );
+      
+      arg_set->rhost = (struct remote_host *) malloc( sizeof( struct remote_host ) );
+      if( arg_set->rhost == NULL )
+      {
+        fprintf( stderr , "Allocation Error.\n" );
+        mode = -2;
+        break;
+      }
+      
+      pos++;
+      if( dref(pos) == NULL )
+      {
+        fprintf( stderr , "Missing port for host pipe.\n" );
+        mode = -1;
+        break;
+      }
+      
+      arg_set->rhost->ipv6 = dref(pos);
+      
+      pos++;
+      if( dref(pos) == NULL )
+      {
+        fprintf( stderr , "Missing port for host pipe.\n" );
+        mode = -1;
+        break;
+      }
+      
+      arg_set->rhost->port_no = dref(pos);
+      
     } 
     pos++;
   }
@@ -301,6 +389,105 @@ int parse_special( char **arg_list , char **spec_res )
   return mode;
 }     
 
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: dclient
+//
+// DESCRIPTION:
+//
+// Connect to stuff
+//
+////////////////////////////////////////////////////////////////////////////////
+
+int dclient( char * port , char * ipv6 )
+{
+  int socket_fd;
+	struct sockaddr_in serv_addr;
+	struct hostent *server;
+	
+	//make socket
+	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (socket_fd < 0) 
+		fprintf(stderr,"ERROR opening socket");
+  
+  //get server struct
+	server = gethostbyname( ipv6 );
+	if (server == NULL) {
+		fprintf(stderr,"ERROR, no such host\n");
+		exit(0);
+	}
+	
+	//zero address
+	bzero((char *) &serv_addr, sizeof(serv_addr));
+	
+	serv_addr.sin_family = AF_INET;
+	
+	//copy address to the socket
+	bcopy((char *)server->h_addr, 
+			(char *)&serv_addr.sin_addr.s_addr,
+			server->h_length);
+
+  //host to network	
+	serv_addr.sin_port = htons( atoi(port) );
+	
+	//try connecting
+	if (connect(socket_fd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+		fprintf(stderr,"ERROR connecting");
+		
+  return socket_fd;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: dserver
+//
+// DESCRIPTION:
+//
+// Connect to stuff
+//
+////////////////////////////////////////////////////////////////////////////////
+
+int dserver( char * port )
+{
+  int socket_fd,newsocket_fd;
+	socklen_t clilen;
+	struct sockaddr_in serv_addr, cli_addr;
+
+	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	
+	if (socket_fd < 0) 
+		fprintf(stderr,"ERROR opening socket");
+	
+	//zero address	
+	bzero((char *) &serv_addr, sizeof(serv_addr));
+	
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
+	serv_addr.sin_port = htons( atoi(port) );
+	
+	if( bind(socket_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr) ) < 0) 
+		fprintf(stderr,"ERROR on binding");
+		
+	listen(socket_fd,5);
+	clilen = sizeof(cli_addr);
+	newsocket_fd = accept(socket_fd , (struct sockaddr *) &cli_addr, &clilen);
+			
+	if (newsocket_fd < 0) 
+		fprintf(stderr,"ERROR on accept");
+		
+  return newsocket_fd;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// FUNCTION: run_special
+//
+// DESCRIPTION:
+//
+// Runs commands from structure parse_set based on mode.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 int run_special( char * spec_res , int mode )
 {
   struct parse_set * arg_set = (struct parse_set *) spec_res;
@@ -310,6 +497,7 @@ int run_special( char * spec_res , int mode )
   int   p[2];
   pid_t pid;
   int   fd_in = 0;
+  int   fdout = 1;
   pipe(p);
   if( (pid = fork()) == -1 )
   {
@@ -322,16 +510,23 @@ int run_special( char * spec_res , int mode )
     //if child
     if( is_set( mode , REDIR_STDIN ) )
       freopen( arg_set->rdin->path , "r" , stdin );
+    else if( is_set( mode , REMOTE_HOST ) )
+      fd_in = dclient( arg_set->rhost->port_no , arg_set->rhost->ipv6 );
     if( dref(cmd + 1) == NULL )
     { 
       if( is_set( mode , REDIR_STDOUT_W ) )
         freopen( arg_set->rdout->path , "w" , stdout );
       else if( is_set( mode , REDIR_STDOUT_A ) )
         freopen( arg_set->rdout->path , "a" , stdout );
+      else if( is_set( mode , LOCAL_HOST ) )
+      {
+        fdout = dserver( arg_set->lhost->port_no );
+        dup2( fdout , STDOUT_FILENO );
+      }
     }
     else
-      dup2(p[1], 1);
-    dup2(fd_in , 0);
+      dup2(p[1], STDOUT_FILENO );
+    dup2(fd_in , STDIN_FILENO );
     close(p[0]);
     execvp( (dref(cmd))[0] , dref(cmd) );
     exit( EXIT_FAILURE );
@@ -363,6 +558,11 @@ int run_special( char * spec_res , int mode )
           freopen( arg_set->rdout->path , "w" , stdout );
         else if( is_set( mode , REDIR_STDOUT_A ) )
           freopen( arg_set->rdout->path , "a" , stdout );
+        else if( is_set( mode , LOCAL_HOST ) )
+        {
+          fdout = dserver( arg_set->lhost->port_no );
+          dup2( fdout , STDOUT_FILENO );
+        }
       }
       close(p[0]);
       execvp((*cmd)[0], *cmd);
