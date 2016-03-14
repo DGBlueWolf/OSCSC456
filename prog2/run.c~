@@ -37,7 +37,7 @@ void * cmdnm_getCmdnm( void * input )
   if( fin == NULL ) 
     pthread_exit( (void*)&fin );
   
-  fgets( buffer , 1024 , fin );
+  fscanf( fin , "%1024[^\n]", buffer );
   fclose( fin );
   
   pthread_exit( NULL );
@@ -291,6 +291,60 @@ int pwd()
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#define HB_BUFFER_SIZE 1024
+struct hb_elapsed_t
+{
+  //input
+  int tinc;
+  int tend;
+  //shared
+  int complete;
+  int buffer_pos;
+  //output
+  struct timespec time_buffer[HB_BUFFER_SIZE];
+};
+
+void * hb_ticker( void * input )
+{
+  //Define variables for thread
+  struct timespec Time;
+  struct hb_elapsed_t * hb_block = (struct hb_elapsed_t *) input;
+  long msec_init;
+  time_t sec_init;
+  long elapsed = 0;
+  long next = hb_block->tinc;
+  int tinc = hb_block->tinc;
+  int tend = hb_block->tend;
+  
+  hb_block->buffer_pos = 0;
+  clock_gettime( CLOCK_REALTIME , &Time );
+  msec_init = Time.tv_nsec/1000000;
+  sec_init  = Time.tv_sec;
+  
+  hb_block->complete = 0;
+  do
+  {
+    hb_block->time_buffer[ hb_block->buffer_pos % HB_BUFFER_SIZE ] = Time;
+    hb_block->buffer_pos++;
+    //printf( "here\n" );
+    //keep checking time until it the right time
+    if( elapsed < tend )
+      while( elapsed < next )
+      {
+        clock_gettime( CLOCK_REALTIME , &Time );
+        elapsed = 1000 * (Time.tv_sec - sec_init) +
+                  (Time.tv_nsec/1000000 - msec_init);
+      }
+    else
+    {
+      hb_block->complete = 1;
+      pthread_exit(NULL);
+    }
+    next += tinc;
+  }
+  while( 1 );
+}
+
 int hb( int tinc , int tend , char * tval )
 {
   //Verify input, and setup for running with units of s or ms.
@@ -309,27 +363,36 @@ int hb( int tinc , int tend , char * tval )
   } 
   
   //Define variables
+  struct hb_elapsed_t hb_block;
   char buffer[26];
   char millis[5] = ".000";
-  long nsec_init;
-  long msec_init;
-  long elapsed = 0;
-  long msec,nsec,next = tinc;
-  int i;
+  long msec;
+  int  buffer_read_pos = 0;
+  int  code;
+  int  i;
+  time_t sec;
   struct timespec Time;
   struct tm * time;
-  time_t sec,sec_init;
+  pthread_t thread;
   
-  //Initial clock stuff
-  clock_gettime( CLOCK_REALTIME , &Time );
-  sec  = sec_init  = Time.tv_sec;
-  nsec = nsec_init = Time.tv_nsec;
-  msec = msec_init = nsec/1000000;
+  hb_block.tinc = tinc;
+  hb_block.tend = tend;
+  hb_block.complete = 0;
   
-  //Heartbeat loop
-  do
+  //make thread
+  code = pthread_create( &thread , NULL , hb_ticker , (void *) &hb_block );
+  assert( code == 0 );
+  
+  //While thread is still running
+  while( !hb_block.complete )
+  while( buffer_read_pos < hb_block.buffer_pos )
   {
-    //Build time of day string and print to stdout
+    Time = hb_block.time_buffer[ buffer_read_pos % HB_BUFFER_SIZE ];
+    buffer_read_pos++;
+    sec = Time.tv_sec;
+    msec = Time.tv_nsec/1000000;
+    
+    //Build output string
     time = localtime( &sec );
     strftime( buffer , 26 , "%H:%M:%S" , time );
     if( ms )
@@ -343,22 +406,9 @@ int hb( int tinc , int tend , char * tval )
       strncat( buffer , millis , 5 );
     }
     puts(buffer);
-    
-    //Wait for elapsed time to equal target time next, break when we exceed 
-    //the end time
-    if( elapsed < tend )
-      while( elapsed < next )
-      {
-        clock_gettime( CLOCK_REALTIME , &Time );
-        sec = Time.tv_sec;
-        msec = Time.tv_nsec/1000000;
-        elapsed = 1000*(sec - sec_init) + (msec - msec_init);
-      }
-    else
-      break;
-    next += tinc;
   }
-  while( 1 );
+  code = pthread_join( thread , NULL );
+  assert( code == 0 );
   return 0;
 }
 
