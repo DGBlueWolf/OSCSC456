@@ -9,7 +9,7 @@ CPP = g++
 CFLAGS = -lm -pthread
 
 #OBJECT FILES
-OBJS = run.o dsh.o
+OBJS = special.o run.o dsh.o
 
 dsh: ${OBJS}
 	${CC} ${CFLAGS} ${OBJS} -o dsh
@@ -19,4 +19,7 @@ dsh.o: dsh.c
 
 run.o: run.c
 	${CC} -c ${CFLAGS} run.c
+	
+special.o: special.c
+	${CC} -c ${CFLAGS} special.c
 #-----------------------------------------------------------------------

@@ -9,9 +9,11 @@
 #include <unistd.h>
 
 //Make some twidly fucntions more clear/ readable
-#define dref(x)    (*(x))
-#define is_even(x) (~(x))&1
-#define is_odd(x)  (x)&1
+#define dref(x)     (*(x))
+#define is_even(x)  (~(x))&1
+#define is_odd(x)   (x)&1
+#define is_set(x,i) ( (x) & (i) )
+#define setb(x,i)   (x) |= (i) 
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -101,15 +103,16 @@ int dsh_prompt( char** input )
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-int parse_input( char* input, char*** argv )
+int parse_input( int * argc , char* input, char*** argv )
 {
-  int argc = 0; //Count of arguments
+  dref(argc) = 0; //Count of arguments
   int count = 0; //Counter to store arguments
   int done = 0;
   int before = 0;
   int found = 0;
   int quotes = 0;
-
+  int status = 0;
+  
   char** args = NULL;
   char* argin = input;
   char* iptin = input;
@@ -123,28 +126,31 @@ int parse_input( char* input, char*** argv )
       case 0:
         done = 1;
         break;
+        
       case '\"':
         quotes++;
         found = 0;
         break;
+        
       case ' ':
         if( is_even(quotes) )
         {
           found = 0;
           break;
         }
+        
       case '\t':
       default:
         found = 1;
         if( !before  )
-          argc++;
+          dref(argc)++;
     }
     if( !done && !found )
       dref(iptin) = 0;
     iptin++;
   }
 
-  //Check if there is a non-even number of ""
+  //Check if there are an odd number of ""
   if( is_odd(quotes) )
   {
     printf( "Parse error: Unable to match \"\" delimiters.\n" );
@@ -152,8 +158,8 @@ int parse_input( char* input, char*** argv )
   }
 
   //Allocate Exactly Enough Memory
-  if( argc > 0 )
-    args = (char**) malloc( (argc+1)*sizeof(char*) );
+  if( dref(argc) > 0 )
+    args = (char**) malloc( (dref(argc)+1)*sizeof(char*) );
   else
     return 0;
 
@@ -175,16 +181,16 @@ int parse_input( char* input, char*** argv )
       found = 0;
     argin++;
   }
-  args[argc] = NULL;
+  args[dref(argc)] = NULL;
 
   //For testing purposes
-  if( argc > 0 && argv != NULL )
+  if( dref(argc) > 0 && argv != NULL )
   {
     dref(argv) = args;
   }
   else
     free(args);
-  return argc;
+  return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -248,6 +254,8 @@ int main()
   char** arg_list = NULL;
   int status = 0;
   int args = 0;
+  int mode = 0;
+  char * spec_res = NULL;
   do
   {
     args = 0;
@@ -255,13 +263,20 @@ int main()
     arg_list = NULL;
     status = dsh_prompt( &input );
     scanf( "%*1c" );
+    
     if( !status )
     {
-      args = parse_input( input, &arg_list );
+      status = parse_input( &args, input, &arg_list );
+      mode = parse_special( arg_list , &spec_res );
       fflush(stdout);
-      if( args > 0 )
-        status = run_command( args , arg_list );
+      if( mode == -1 )
+        fprintf( stderr , "Parse error: Verify command and order of operators\n" );
+      else if( mode == 0 )
+        status = run_command( args , arg_list ); 
+      else
+        status = run_special( spec_res , mode );   
     }
+    
     if( input != NULL )
       free( input );
     if( arg_list != NULL )
