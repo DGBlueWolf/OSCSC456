@@ -8,7 +8,8 @@
 \title{\texttt{dsh:} A Diagnostic Shell}
 \newcommand{\nl}{\vspace{10pt}}
 \begin{document}
-
+\newcommand{\Center}[1]{\begin{center} #1
+\end{center} }
 \maketitle
 \center{ Course: CSC456 -- Operating Systems }
 \center{ Instructor: Dr. Jeff McGough }
@@ -23,35 +24,42 @@ The program will provide the following features:
 
 \item \textbf{Prompt:} The prompt \texttt{dsh> } will be displayed. This is where the user will enter commands. 
 
-\item \textbf{Intrinsic Commands:} Six shell intrinsic commands will be implemented: \texttt{cmdnm, signal, systat, exit, cd, and pwd}. \texttt{cmdnm} prints the command that initiated a process. \texttt{signal} sends a signal to another process. \texttt{systat} displays some information about the system, including version, uptime, memory usage, and CPU info. \texttt{exit} will exit the shell nicely. \texttt{cd} implements the \texttt{chdir} command to change the directory via the relative or absolute path provided. \texttt{pwd} prints the working directory.
+\item \textbf{Intrinsic Commands:} Seven shell intrinsic commands will be implemented: \texttt{cmdnm, signal, systat, exit, cd, pwd, hb}. \texttt{cmdnm} prints the command that initiated a process. \texttt{signal} sends a signal to another process. \texttt{systat} displays some information about the system, including version, uptime, memory usage, and CPU info. \texttt{exit} will exit the shell nicely. \texttt{cd} implements the \texttt{chdir} command to change the directory via the relative or absolute path provided. \texttt{pwd} prints the working directory. \texttt{hb} prints the current time every specified interval for a specified length of time.
 
 \item \textbf{Single Program Command:} Any single command (plus arguments), will be executed by the shell and return any stdout.
+
+\item \textbf{Pipes and Redirects:} This shell supports nearly unlimited piping, with the proviso that all pipes must come before redirects or remote pipes (which really have the flavor of redirects). Redirects include appending writes.
+
+\item \textbf{Pthreads:} This program uses threading for education purpose on \texttt{cmdnm}, \texttt{systat}, and \texttt{hb} intrinsic shell commands.
 
 \end{itemize}
 
 \subsection*{Submission Details}
 
-The submission includes a tar-ball, \texttt{prog1.tgz}, which contains all files relevant to the program. This includes the source code, makefile, and documentation.\nl
+The submission includes a tar-ball, \texttt{prog2.tgz}, which contains all files relevant to the program. This includes the source code, Makefile, and documentation.\nl
 
-\texttt{prog1.tgz} contains: 
+\texttt{prog2.tgz} contains: 
 \begin{itemize}
 
 \item \texttt{dsh.c}: This file implements the command prompt, command line input, input parsing, and the main event loop for the program.
 
 \item \texttt{run.c} This file implements the intrinsic commands, as well as \texttt{fork/exec} for single commands with arguments.
 
-\item \texttt{makefile} This file builds the program \texttt{dsh} from the source files \texttt{dsh.c} and \texttt{run.c}.
+\item \texttt{special.c} This file implements the new file piping and redirection commands. This file could easily be adapted to handle all fork and exec needs for the shell.
 
-\item \texttt{prog1.pdf} This file provides documentation for the program \texttt{dsh}, its source files and the makefile.
+\item \texttt{Makefile} This file builds the program \texttt{dsh} using source files \texttt{dsh.c}, \texttt{run.c}, and \texttt{special.c}.
+
+\item \texttt{prog2.pdf} This file provides documentation for the program \texttt{dsh}, its source files and its Makefile.
 
 \end{itemize}
 
 \subsection*{Compilation and Usage}
 
-The makefile builds the program in the following way:
+The Makefile builds the program in the following way:
 
 \begin{description}
-\item \texttt{ gcc dsh.c -o dsh -g -Wall }
+\item \texttt{ gcc -o -lm -pthread special.o run.o dsh.o }
+\item Others files are compiled individually using \texttt{-c} instead of \texttt{-o} to create object files.
 \end{description}
 
 The program can be run by typing \texttt{dsh} is a bash shell.
@@ -61,15 +69,20 @@ The program can be run by typing \texttt{dsh} is a bash shell.
 The source code includes the following libraries.
 
 \begin{itemize}
+\item \texttt{assert.h}
+\item \texttt{pthread.h}
+\item \texttt{netdb.h}
+\item \texttt{netinet/in.h}
+\item \texttt{signal.h}
 \item \texttt{stdio.h}
 \item \texttt{string.h}
 \item \texttt{stdlib.h}
-\item \texttt{signal.h}
-\item \texttt{sys/stat.h}
-\item \texttt{sys/wait.h}
-\item \texttt{sys/time.h}
 \item \texttt{sys/resource.h}
+\item \texttt{sys/socket.h}
+\item \texttt{sys/stat.h}
 \item \texttt{sys/types.h}
+\item \texttt{sys/wait.h}
+\item \texttt{time.h}
 \item \texttt{unistd.h}
 \end{itemize}
 
@@ -80,26 +93,27 @@ The general flow of the program has the following format.
 \item \textbf{Program structure}
 
 \texttt{do}\\
-~~\texttt{getInput}\\
-~~\texttt{parseInput}\\
-~~\texttt{status $=$ handler(input)}\\
+~~\texttt{getInput - gets user input at command line}\\
+~~\texttt{parseInput - parse said input}\\
+~~\texttt{parseSpecial - looks for special operators}\\
+~~\texttt{status $=$ handler(input,mode)}\\
 \texttt{while status $\equiv$ 0}
 
 \end{description}
 
 \subsubsection*{Function Descriptions}
 
-This section describes all functions implemented in the source code.\\
+\center{ \subsubsection*{\Large{\texttt{Defined in dsh.c} } }}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|dsh_prompt[dsh.c(33)]|
+\verb|dsh_prompt[dsh.c(34)]|
 
 \item \textbf{Description:}\\
-This function recieves command line input for the shell.
+This function receives command line input for the shell.
 The storage is dynamically allocated for the input stream in
-blocks of 256 bytes
+blocks of 256 bytes.
 
 \item \textbf{Output:}
 \begin{description}
@@ -118,7 +132,7 @@ blocks of 256 bytes
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|parse_input[dsh.c(105)]|
+\verb|parse_input[dsh.c(106)]|
 
 \item \textbf{Description:}\\
 This function parses input gathered from the command line.
@@ -142,11 +156,11 @@ This function parses input gathered from the command line.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|run_command[dsh.c(215)]|
+\verb|run_command[dsh.c(222)]|
 
 \item \textbf{Description:}\\
 This function takes the argument list from Main and directs it to either the
- fork/exec code for single functions or to the instrinsic commands.
+fork/exec code for single functions or to the intrinsic commands.
 
 The first argument is expected to be the command name. 
 
@@ -165,7 +179,7 @@ The first argument is expected to be the command name.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|main[dsh.c(243)]|
+\verb|main[dsh.c(251)]|
 
 \item \textbf{Description:}\\
 This function implements the main event loop for the shell. It waits for the exit command to terminate.
@@ -176,14 +190,14 @@ This function implements the main event loop for the shell. It waits for the exi
 \end{description}
 \end{description}\hrule
 
-\pagebreak
+\Center{ \subsubsection*{\Large{\texttt{Defined in run.c} } }}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|cmdnm[run.c(30)]|
+\verb|cmdnm[run.c(46)]|
 
 \item \textbf{Description:}\\
-This function gets the command that started a process by accessing \verb|/proc/<pid>/comm|.
+This function gets the command that started a process by accessing \verb|/proc/<pid>/comm|. NEW: This command now uses thread function \verb|cmdnm_getCmdnm| to get the name. The thread passes this info along to the main code.
 
 \item \textbf{Input:}
 \begin{description}
@@ -200,7 +214,7 @@ This function gets the command that started a process by accessing \verb|/proc/<
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|send_signal[run.c(63)]|
+\verb|send_signal[run.c(76)]|
 
 \item \textbf{Description:}\\
 This function sends a signal to a process using the kill command. It checks if the arguments are in the proper ranges, switching them if not.
@@ -221,14 +235,15 @@ This function sends a signal to a process using the kill command. It checks if t
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|systat[run.c(93)]|
+\verb|systat[run.c(195)]|
 
 \item \textbf{Description:}\\
 This function gets some information about the system and displays it for the
 user in stdout. The specific information it provides is as follows:\\
 ~~-Linux version and system uptime\\
 ~~-Memory Usage: memtotal and memfree\\
-~~-CPU Information: vendor id through cache size
+~~-CPU Information: vendor id through cache size\\
+NEW: Threads now go and fetch each piece of output concurrently.
 
 \item \textbf{Returns:}
 \begin{description}
@@ -240,7 +255,7 @@ user in stdout. The specific information it provides is as follows:\\
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|cd[run.c(176)]|
+\verb|cd[run.c(242)]|
 
 \item \textbf{Description:}\\
 This function implements the change directory intrinsic command.
@@ -260,7 +275,7 @@ This function implements the change directory intrinsic command.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|pwd[run.c(203)]|
+\verb|pwd[run.c(269)]|
 
 \item \textbf{Description:}\\
 This function implements the print working directory intrinsic command.
@@ -271,13 +286,34 @@ This function implements the print working directory intrinsic command.
 \end{description}
 \end{description}\hrule
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|hb[run.c(348)]|
+
+\item \textbf{Description:}\\
+Prints the current time every \verb|<tinc>| s/ms until \verb|<tend>|.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|int tinc|~~ The desired time increment.
+\item \verb|int tend|~~ The desired amount of time to wait.
+\item \verb|char * tval|~~ Should be either s for second of ms for milliseconds.
+\end{description}
+
+\item \textbf{Returns:}
+\begin{description}
+\item \verb|0|~~ Successfully completed.
+\end{description}
+\end{description}\hrule
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|Run[run.c(221)]|
+\verb|Run[run.c(425)]|
 
 \item \textbf{Description:}\\
- This function directs the program to run the intrinsic commands, checking for correct number of arguments where applicable.
+ This function directs the program to run the intrinsic commands, checking for correct number of arguments where applicable. Uses shared memory buffer in for communication between thread and process.
 
 \item \textbf{Input:}
 \begin{description}
@@ -297,7 +333,7 @@ This function implements the print working directory intrinsic command.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{description}
 \item \textbf{Name:} 
-\verb|New_Process[run.c(269)]|
+\verb|New_Process[run.c(480)]|
 
 \item \textbf{Description:}\\
 Creates a new process to run the given single command received at the command line in the diagnostic shell.
@@ -314,12 +350,127 @@ Creates a new process to run the given single command received at the command li
 \end{description}
 \end{description}\hrule
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\Center{ \subsubsection*{\Large{\texttt{Defined in special.c} } }}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|parse_set_free[special.c(77)]|
 
+\item \textbf{Description:}\\
+ This function frees a struct \verb|parse_set| pointer.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|struct parse_set * arg_set|~~ Thing to be freed.
+\end{description}
+\end{description}\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|pipeBuilder[special.c(113)]|
+
+\item \textbf{Description:}\\
+ This function finds and packages all necessary pipe commands. Result is an array of NULL-terminated arglists which can be used by \texttt{execvp}. 
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|int command_count|~~ Number of commands involved in pipes.
+\item \verb|int arg_list|~~ The original \verb|arg_list| from \verb|parse_input| to be divided and packaged.
+\end{description}
+
+\item \textbf{Output:}
+\begin{description}
+\item \verb|pipe_builder * pip|~~ Returns a pointer to a \verb|pipe_builder| struct storing the number of commands and the \verb|arg_lists| package.
+\end{description}
+\end{description}\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|parse_special[special.c(163)]|
+
+\item \textbf{Description:}\\
+Parses the argument list returned by \verb|parse_input| by looking for special redirection operators and handling everything accordingly. Arguments are passed to other functions using \verb|spec_res| which wraps the main \verb|parse_set| struct pointer.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|char ** arg_list|~~ The original argument list to be parsed.
+\end{description}
+
+\item \textbf{Output:}
+\begin{description}
+\item \verb|char ** spec_res| ~~ holds address of the \verb|parse_set| struct pointer which is generated by the function.
+\item \verb|int mode| ~~ The modes of operation due to operators.
+\end{description}
+\end{description}\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|dclient[special.c(406)]|
+
+\item \textbf{Description:}\\
+ This function returns the file descriptor to the socket located at port on server.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|char * port|~~ The port number to connect to.
+\item \verb|char * ipv6|~~ The ip address to connect to.
+\end{description}
+
+\item \textbf{Return:}
+\begin{description}
+\item \verb|int socket_fd|~~ The file descriptor for the socket.
+\end{description}
+\end{description}\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|dserver[special.c(454)]|
+
+\item \textbf{Description:}\\
+This creates a new port on the local server in preparation for the sending pipe.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|char * port|~~ The port number to use.
+\end{description}
+
+\item \textbf{Return:}
+\begin{description}
+\item \verb|int newsocket_fd|~~ The file descriptor for the socket.
+\end{description}
+\end{description}\hrule
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{description}
+\item \textbf{Name:} 
+\verb|run_special[special.c(498)]|
+
+\item \textbf{Description:}\\
+This function does all the awesome stuff that the program document asks us to do. It implements pipes, remote pipes, and redirects. It takes the special struct returned by \verb|parse_special| and does magic with it.
+
+\item \textbf{Input:}
+\begin{description}
+\item \verb|char * spec_res|~~ Wrapper for magical struct storing extra-parsed information.
+\item \verb|int mode|~~ The thing that tells use what needs to get done.
+\end{description}
+
+\item \textbf{Return:}
+\begin{description}
+\item \verb|int status|~~ Returns 0 for success!
+\end{description}
+\end{description}\hrule
+
+\flushleft
 \subsection*{Testing and Verification}
 
-This program was tested and verified by trying each required command at separate times. The code was developed in such a way that functionally was continually added to an already functional program. Since each required feature was largely independent of the others, debugging was straight-forward.\nl
+This program was lightly tested and verified by trying each required command at separate times. The code was developed by continually adding functionality to a functional program. Since each required feature was largely independent of the others, debugging was straight-forward.\nl
 
-Valgrind was used to check for memory leaks. There are no known bugs at the time of submission, however error checking could be a bit more rigorous. 
+A known bug: The overly complicated parsing function doesn't always provide the proper error message for some parse errors and will just return saying nothing. \nl
+
+There are no known major errors, however, more testing could expose some.
 
 \end{document}
