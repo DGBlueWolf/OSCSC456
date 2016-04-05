@@ -275,7 +275,6 @@ int parse_special( char **arg_list , char **spec_res )
       arg_set->rdout->path = dref(pos);
     }
     
-    //Look for the pipe symbol
     else if( strlen( dref(pos)) == 1 && !strncmp( dref(pos) , "|" , 1 ) )
     {
       if( is_set( mode , REDIR_STDOUT_W | REDIR_STDOUT_A | REDIR_STDIN ) )
@@ -502,9 +501,11 @@ int run_special( char * spec_res , int mode )
   char *** cmd = arg_set->pbargs->arg_lists;
   
   int   p[2];
-  pid_t pid;
   int   fd_in = 0;
   int   fdout = 1;
+  int   status = 0;
+  pid_t pid;
+
   pipe(p);
   if( (pid = fork()) == -1 )
   {
@@ -546,7 +547,13 @@ int run_special( char * spec_res , int mode )
   
   else
   {
-    wait(NULL);
+    wait(&status);
+    if( status == 256 )
+    {
+      fprintf(stderr, "dsh: %s: command not found\n" , (*cmd)[0] );
+      free(arg_set);
+      return -1;
+    }
     close(p[1]);
     fd_in = p[0]; //save the input for the next command
     cmd++;
@@ -585,7 +592,13 @@ int run_special( char * spec_res , int mode )
     }
     else
     {
-      wait(NULL);
+      wait(&status);
+      if( status == 256 )
+      {
+        fprintf(stderr, "dsh: %s: command not found\n" , (*cmd)[0] );
+        free( arg_set );
+        return -1;
+      }
       close(p[1]);
       fd_in = p[0]; //save the input for the next command
       cmd++;
