@@ -1,5 +1,4 @@
-#-----------------------------------------------------------------------
-
+#-----------------------------------------------------------------------	
 # Use the GNU C/C++ compiler:
 CC = gcc
 CPP = g++
@@ -9,8 +8,10 @@ CPP = g++
 CFLAGS = -lm -pthread
 
 #OBJECT FILES
-OBJS = run.o dsh.o
+OBJS = special.o run.o dsh.o
 
+test: dsh
+	export PATH=$PATH:$(pwd)
 dsh: ${OBJS}
 	${CC} ${CFLAGS} ${OBJS} -o dsh
 
